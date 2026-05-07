@@ -1,17 +1,20 @@
-# TEMU订单自动备货工具｜双模式稳定版 V4
+# TEMU订单自动备货工具｜双模式稳定终极版 V4
 
 import streamlit as st
 import pandas as pd
 from io import BytesIO
 import re
 
+# ==================================================
+# 页面配置
+# ==================================================
 st.set_page_config(
     page_title="TEMU自动备货工具",
     layout="wide"
 )
 
 st.title("TEMU订单自动备货工具")
-st.caption("上传订单Excel → 自动生成备货单 / 拣货单 / 销量统计")
+st.caption("上传订单Excel → 自动生成备货单 / 拣货单")
 
 # ==================================================
 # 模式选择
@@ -46,7 +49,7 @@ except Exception as e:
     BRAND_RULES = {}
 
 # ==================================================
-# 备注规则
+# 备注规则（仅识别SKC货号）
 # ==================================================
 REMARK_RULES = {
     "Gua Sheng": "防盗刷",
@@ -70,14 +73,14 @@ def safe_col(df, col_name):
     )
 
 # ==================================================
-# 品牌识别
+# 品牌识别（不区分大小写）
 # ==================================================
 def detect_brand(product_name):
 
     if pd.isna(product_name):
         return "未知品牌"
 
-    text = str(product_name).lower()
+    text = str(product_name).lower().strip()
 
     # 长关键词优先
     sorted_rules = sorted(
@@ -106,18 +109,12 @@ def extract_color_model(text):
     text = str(text).strip()
 
     # 统一分隔符
-    text = re.sub(
-        r"\s*[/\-]\s*",
-        "-",
-        text
-    )
+    text = text.replace(" / ", "-")
+    text = text.replace("/", "-")
+    text = text.replace(" - ", "-")
 
     # 分割
-    parts = re.split(
-        r"-",
-        text,
-        maxsplit=1
-    )
+    parts = re.split(r"-", text, maxsplit=1)
 
     # 无分隔符
     if len(parts) < 2:
@@ -129,32 +126,120 @@ def extract_color_model(text):
     return color, model
 
 # ==================================================
-# 最终型号生成
+# 最终型号生成（彻底解决品牌重复）
 # ==================================================
 def build_final_model(brand, model):
 
     brand = str(brand).strip()
     model = str(model).strip()
 
-    if brand == "":
-        return model
+    if model == "":
+        return brand
 
     brand_lower = brand.lower()
     model_lower = model.lower()
 
-    # 去除型号前面的重复品牌
-    pattern = rf"^{re.escape(brand_lower)}[\s\-_\/]+"
+    # ==================================================
+    # 去除重复品牌（核心修复）
+    # Redmi Xiaomi Redmi Note 15
+    # Galaxy Samsung Galaxy S23 Ultra
+    # iPhone iPhone 12 Pro
+    # ==================================================
 
-    if re.match(pattern, model_lower):
+    # 持续删除前缀品牌
+    while True:
 
-        model = re.sub(
-            pattern,
-            "",
-            model,
-            flags=re.IGNORECASE
-        ).strip()
+        changed = False
 
+        # 拆分型号
+        words = model.split()
+
+        if len(words) == 0:
+            break
+
+        first_word = words[0].lower()
+
+        # 如果型号开头 = 品牌
+        if first_word == brand_lower:
+
+            words.pop(0)
+
+            model = " ".join(words).strip()
+
+            changed = True
+
+        # Samsung Galaxy 特殊处理
+        samsung_alias = [
+            "samsung",
+            "galaxy"
+        ]
+
+        if brand_lower in samsung_alias:
+
+            while True:
+
+                temp_words = model.split()
+
+                if len(temp_words) == 0:
+                    break
+
+                temp_first = temp_words[0].lower()
+
+                if temp_first in samsung_alias:
+
+                    temp_words.pop(0)
+
+                    model = " ".join(temp_words).strip()
+
+                    changed = True
+
+                else:
+                    break
+
+        # Xiaomi / Redmi 特殊处理
+        xiaomi_alias = [
+            "xiaomi",
+            "redmi"
+        ]
+
+        if brand_lower in xiaomi_alias:
+
+            while True:
+
+                temp_words = model.split()
+
+                if len(temp_words) == 0:
+                    break
+
+                temp_first = temp_words[0].lower()
+
+                # 只删除重复前缀
+                if temp_first == brand_lower:
+
+                    temp_words.pop(0)
+
+                    model = " ".join(temp_words).strip()
+
+                    changed = True
+
+                else:
+                    break
+
+        if not changed:
+            break
+
+    # ==================================================
+    # 清理连接符
+    # ==================================================
+    model = re.sub(
+        r"^[\s\-_\/]+",
+        "",
+        model
+    ).strip()
+
+    # ==================================================
     # 最终型号
+    # ==================================================
     final_model = f"{brand} {model}"
 
     # 清理多余空格
@@ -162,32 +247,34 @@ def build_final_model(brand, model):
         r"\s+",
         " ",
         final_model
-    )
+    ).strip()
 
-    return final_model.strip()
+    return final_model
 
 # ==================================================
-# 备注识别
+# 备注识别（只读取SKC货号）
 # ==================================================
 def detect_remark(skc_code):
 
-    # 空值默认防盗刷
+    # 无内容 = 防盗刷
     if pd.isna(skc_code):
         return "防盗刷"
 
     skc = str(skc_code).strip()
 
-    # 空字符串
-    if skc == "" or skc.lower() == "nan":
+    if skc == "":
         return "防盗刷"
 
-    # 规则识别
+    if skc.lower() == "nan":
+        return "防盗刷"
+
+    # 优先识别规则
     for keyword, remark in REMARK_RULES.items():
 
         if keyword.lower() in skc.lower():
             return remark
 
-    # 默认防盗刷
+    # 默认
     return "防盗刷"
 
 # ==================================================
@@ -211,7 +298,7 @@ def detect_error(row):
 # ==================================================
 # Excel导出
 # ==================================================
-def export_excel(df, sheet_name="Sheet1"):
+def export_excel(df_dict):
 
     output = BytesIO()
 
@@ -220,11 +307,13 @@ def export_excel(df, sheet_name="Sheet1"):
         engine="openpyxl"
     ) as writer:
 
-        df.to_excel(
-            writer,
-            index=False,
-            sheet_name=sheet_name
-        )
+        for sheet_name, df in df_dict.items():
+
+            df.to_excel(
+                writer,
+                index=False,
+                sheet_name=sheet_name
+            )
 
     output.seek(0)
 
@@ -259,7 +348,7 @@ if uploaded_files:
 
         except Exception as e:
 
-            st.error(f"读取失败: {file.name}")
+            st.error(f"读取失败: {file.name} | {e}")
 
     # ==================================================
     # 合并数据
@@ -353,7 +442,7 @@ if uploaded_files:
 
             result_df["数量"] = 1
 
-        # 转整数
+        # 转数字
         result_df["数量"] = pd.to_numeric(
             result_df["数量"],
             errors="coerce"
@@ -442,69 +531,6 @@ if uploaded_files:
         )
 
         # ==================================================
-        # 销量统计
-        # ==================================================
-        st.subheader("销量统计")
-
-        stat_mode = st.selectbox(
-            "统计维度",
-            [
-                "品牌",
-                "型号",
-                "型号+颜色",
-                "型号+颜色+备注"
-            ]
-        )
-
-        if stat_mode == "品牌":
-
-            stat_cols = ["品牌"]
-
-        elif stat_mode == "型号":
-
-            stat_cols = ["型号"]
-
-        elif stat_mode == "型号+颜色":
-
-            stat_cols = ["型号", "颜色"]
-
-        else:
-
-            stat_cols = ["型号", "颜色", "备注"]
-
-        sales_df = result_df.fillna("").groupby(
-            stat_cols,
-            as_index=False
-        ).agg({
-            "数量": "sum"
-        })
-
-        sales_df = sales_df.sort_values(
-            by="数量",
-            ascending=False
-        )
-
-        st.dataframe(
-            sales_df,
-            use_container_width=True
-        )
-
-        # ==================================================
-        # 下载销量统计
-        # ==================================================
-        sales_excel = export_excel(
-            sales_df,
-            "销量统计"
-        )
-
-        st.download_button(
-            label="下载销量统计Excel",
-            data=sales_excel,
-            file_name="销量统计.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-        # ==================================================
         # 备货单模式
         # ==================================================
         if mode == "备货单模式":
@@ -523,10 +549,11 @@ if uploaded_files:
                 use_container_width=True
             )
 
-            excel_file = export_excel(
-                final_df,
-                "备货单"
-            )
+            # 导出
+            excel_file = export_excel({
+                "备货单": final_df,
+                "SKU汇总": summary_df
+            })
 
             st.download_button(
                 label="下载备货单Excel",
@@ -614,10 +641,9 @@ if uploaded_files:
             # ==================================================
             # 下载
             # ==================================================
-            pick_excel = export_excel(
-                pick_df,
-                "仓库拣货单"
-            )
+            pick_excel = export_excel({
+                "仓库拣货单": pick_df
+            })
 
             st.download_button(
                 label="下载拣货单Excel",
