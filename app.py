@@ -1,4 +1,4 @@
-# TEMU订单自动备货工具｜双模式稳定终极版 V5
+# TEMU订单自动备货工具｜双模式稳定终极版 V6
 
 import streamlit as st
 import pandas as pd
@@ -72,7 +72,7 @@ def safe_col(df, col_name):
     )
 
 # ==================================================
-# 品牌识别（机型优先 + 品牌库输出）
+# 品牌识别（机型优先）
 # ==================================================
 def detect_brand(product_name, model_text=""):
 
@@ -88,7 +88,9 @@ def detect_brand(product_name, model_text=""):
         reverse=True
     )
 
-    # SKU属性优先
+    # ==================================================
+    # 机型优先识别品牌
+    # ==================================================
     for keyword, output in sorted_rules:
 
         keyword = str(keyword).lower().strip()
@@ -99,7 +101,9 @@ def detect_brand(product_name, model_text=""):
         if keyword in model_text:
             return str(output).strip()
 
-    # 产品名称次优先
+    # ==================================================
+    # 产品名称兜底识别
+    # ==================================================
     for keyword, output in sorted_rules:
 
         keyword = str(keyword).lower().strip()
@@ -137,7 +141,7 @@ def extract_color_model(text):
     return color, model
 
 # ==================================================
-# 最终型号生成（彻底去重）
+# 最终型号生成（终极稳定版）
 # ==================================================
 def build_final_model(brand, model):
 
@@ -147,6 +151,9 @@ def build_final_model(brand, model):
     if model == "":
         return brand
 
+    # ==================================================
+    # 清理空格
+    # ==================================================
     model = re.sub(
         r"\s+",
         " ",
@@ -154,44 +161,78 @@ def build_final_model(brand, model):
     ).strip()
 
     # ==================================================
-    # Redmi 特殊规则
-    # Xiaomi Redmi Note 15
-    # => Redmi Note 15
+    # 机型中的品牌优先
     # ==================================================
+    detected_brand = None
 
-    if brand.lower() == "redmi":
+    sorted_rules = sorted(
+        BRAND_RULES.items(),
+        key=lambda x: len(str(x[0])),
+        reverse=True
+    )
 
-        model = re.sub(
+    for keyword, output in sorted_rules:
+
+        keyword = str(keyword).strip()
+        output = str(output).strip()
+
+        if keyword == "":
+            continue
+
+        if keyword.lower() in model.lower():
+
+            detected_brand = output
+            break
+
+    # ==================================================
+    # 机型品牌覆盖产品品牌
+    # ==================================================
+    if detected_brand:
+        brand = detected_brand
+
+    brand_lower = brand.lower()
+
+    # ==================================================
+    # 特殊品牌规则
+    # ==================================================
+    replacement_rules = [
+
+        # Xiaomi Redmi Note 15
+        # -> Redmi Note 15
+        (
             r"^xiaomi\s+redmi\s+",
-            "Redmi ",
-            model,
-            flags=re.IGNORECASE
-        ).strip()
+            "Redmi "
+        ),
 
-    # ==================================================
-    # Galaxy 特殊规则
-    # Samsung Galaxy S23
-    # => Galaxy S23
-    # ==================================================
+        # Samsung Galaxy S23
+        # -> Galaxy S23
+        (
+            r"^samsung\s+galaxy\s+",
+            "Galaxy "
+        ),
 
-    if brand.lower() == "galaxy":
+        # Apple iPhone 15
+        # -> iPhone 15
+        (
+            r"^apple\s+iphone\s+",
+            "iPhone "
+        ),
+    ]
+
+    for pattern, replacement in replacement_rules:
 
         model = re.sub(
-            r"^samsung\s+galaxy\s+",
-            "Galaxy ",
+            pattern,
+            replacement,
             model,
             flags=re.IGNORECASE
         ).strip()
+
+    model_lower = model.lower()
 
     # ==================================================
     # 去除重复品牌
-    # Redmi Redmi Note 15
-    # Galaxy Galaxy S23
     # ==================================================
-
-    brand_lower = brand.lower()
-    model_lower = model.lower()
-
     if model_lower.startswith(brand_lower):
 
         model = model[len(brand):].strip()
@@ -205,7 +246,6 @@ def build_final_model(brand, model):
     # ==================================================
     # 最终输出
     # ==================================================
-
     final_model = f"{brand} {model}"
 
     final_model = re.sub(
@@ -217,7 +257,7 @@ def build_final_model(brand, model):
     return final_model
 
 # ==================================================
-# 备注识别（只识别SKC）
+# 备注识别（仅识别SKC）
 # ==================================================
 def detect_remark(skc_code):
 
@@ -404,7 +444,7 @@ if uploaded_files:
         result_df["品牌"] = raw_df.apply(
             lambda row: detect_brand(
                 row.get("产品名称", ""),
-                row.get("SKU属性", "")
+                sku_attr.loc[row.name]
             ),
             axis=1
         )
