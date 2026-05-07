@@ -22,21 +22,14 @@ mode = st.radio(
 # =========================
 # 品牌规则
 # =========================
-BRAND_RULES = {
-    "Samsung": "Galaxy",
-    "nubia": "ZTE NUBIA",
-    "SHARP": "SHARP",
-    "Xiaomi": "Xiaomi",
-    "OPPO": "OPPO",
-    "vivo": "vivo",
-    "Google": "Google",
-    "Motorola": "Motorola",
-    "Nokia": "Nokia",
-    "OnePlus": "OnePlus",
-    "HONOR": "HONOR",
-    "Huawei": "Huawei",
-    "Realme": "Realme",
-}
+brand_df = pd.read_excel("brand_rules.xlsx")
+
+BRAND_RULES = dict(
+    zip(
+        brand_df["关键词"],
+        brand_df["标准品牌"]
+    )
+)
 
 # =========================
 # 备注规则
@@ -66,15 +59,22 @@ def detect_brand(product_name):
 # 提取颜色与机型
 # =========================
 def extract_color_model(sku_attr):
+
     if pd.isna(sku_attr):
         return "", ""
 
-    text = str(sku_attr)
+    text = str(sku_attr).strip()
 
-    if "-" not in text:
-        return "", text
+    # 统一分隔符
+    text = text.replace(" / ", "-")
+    text = text.replace("/", "-")
+    text = text.replace(" - ", "-")
 
+    # 分割
     parts = text.split("-", 1)
+
+    if len(parts) < 2:
+        return "", text
 
     color = parts[0].strip()
     model = parts[1].strip()
@@ -169,22 +169,22 @@ if uploaded_files:
         result_df = pd.DataFrame()
 
         # 订单号
-        result_df["订单号"] = raw_df.iloc[:, 0]
+        result_df["订单号"] = raw_df["订单号"]
 
         # 产品名称
-        product_name = raw_df.iloc[:, 1]
+        product_name = raw_df["产品名称"]
 
         # SKU属性
-        sku_attr = raw_df.iloc[:, 5]
+        sku_attr = raw_df["SKU属性"]
 
         # SKC货号
-        skc_code = raw_df.iloc[:, 3]
+        skc_code = raw_df["SKC货号"]
 
         # 数量
-        result_df["数量"] = raw_df.iloc[:, 7]
+        result_df["数量"] = raw_df["发货数"]
 
         # 店铺
-        result_df["店铺"] = raw_df.iloc[:, 8]
+        result_df["店铺"] = raw_df["店铺"]
 
         # 品牌
         result_df["品牌"] = product_name.apply(detect_brand)
@@ -258,13 +258,13 @@ if uploaded_files:
             pick_df = pd.DataFrame()
 
             # 原始字段
-            pick_df["批次号"] = raw_df.iloc[:, 9]
-            pick_df["物流信息"] = raw_df.iloc[:, 10]
-            pick_df["发货单号"] = raw_df.iloc[:, 0]
-            pick_df["订单号"] = raw_df.iloc[:, 1]
-            pick_df["产品名称"] = raw_df.iloc[:, 2]
-            pick_df["SKC"] = raw_df.iloc[:, 3]
-            pick_df["SKU ID"] = raw_df.iloc[:, 5]
+            pick_df["批次号"] = raw_df["批次号"]
+            pick_df["物流信息"] = raw_df["物流信息"]
+            pick_df["发货单号"] = raw_df["发货单号"]
+            pick_df["订单号"] = raw_df["订单号"]
+            pick_df["产品名称"] = raw_df["产品名称"]
+            pick_df["SKC"] = raw_df["SKC"]
+            pick_df["SKU ID"] = raw_df["SKU ID"]
 
             # 自动识别字段
             pick_df["型号"] = result_df["型号"]
@@ -272,9 +272,9 @@ if uploaded_files:
             pick_df["颜色"] = result_df["颜色"]
 
             # 其它字段
-            pick_df["发货数"] = raw_df.iloc[:, 8]
-            pick_df["收货仓库"] = raw_df.iloc[:, 11]
-            pick_df["店铺"] = raw_df.iloc[:, 12]
+            pick_df["发货数"] = raw_df["发货数"]
+            pick_df["收货仓库"] = raw_df["收货仓库"]
+            pick_df["店铺"] = raw_df["店铺"]
 
             # 排序逻辑
             pick_df = pick_df.sort_values(
