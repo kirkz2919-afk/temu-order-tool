@@ -8,13 +8,21 @@ st.title("TEMU订单自动备货工具")
 st.caption("上传订单Excel → 自动生成备货单")
 
 # 品牌规则
-BRAND_RULES = {
-    "Samsung": "Galaxy",
-    "nubia": "ZTE NUBIA",
-    "SHARP": "SHARP",
-    "Xiaomi": "Xiaomi",
-    "OPPO": "OPPO",
-}
+# =========================
+# 品牌库读取
+# =========================
+try:
+    brand_df = pd.read_excel("brand_rules.xlsx")
+
+    BRAND_RULES = dict(
+        zip(
+            brand_df["keyword"],
+            brand_df["brand"]
+        )
+    )
+
+except:
+    BRAND_RULES = {}
 
 # 备注规则
 REMARK_RULES = {
