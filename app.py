@@ -1,8 +1,5 @@
 # TEMU订单自动备货工具｜MVP代码 V1
 
-## app.py
-
-```python
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -300,3 +297,4 @@ if uploaded_files:
                 data=pick_excel,
                 file_name="仓库拣货单.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
