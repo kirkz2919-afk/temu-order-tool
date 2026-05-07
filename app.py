@@ -1,30 +1,49 @@
+# TEMU订单自动备货工具｜MVP代码 V1
+
+## app.py
+
+```python
 import streamlit as st
 import pandas as pd
 from io import BytesIO
+import re
 
 st.set_page_config(page_title="TEMU自动备货工具", layout="wide")
 
 st.title("TEMU订单自动备货工具")
-st.caption("上传订单Excel → 自动生成备货单")
+st.caption("上传订单Excel → 自动生成备货单 / 拣货单")
 
+# =========================
+# 模式选择
+# =========================
+mode = st.radio(
+    "选择系统模式",
+    ["备货单模式", "拣货单模式"],
+    horizontal=True
+)
+
+# =========================
 # 品牌规则
 # =========================
-# 品牌库读取
+BRAND_RULES = {
+    "Samsung": "Galaxy",
+    "nubia": "ZTE NUBIA",
+    "SHARP": "SHARP",
+    "Xiaomi": "Xiaomi",
+    "OPPO": "OPPO",
+    "vivo": "vivo",
+    "Google": "Google",
+    "Motorola": "Motorola",
+    "Nokia": "Nokia",
+    "OnePlus": "OnePlus",
+    "HONOR": "HONOR",
+    "Huawei": "Huawei",
+    "Realme": "Realme",
+}
+
 # =========================
-try:
-    brand_df = pd.read_excel("brand_rules.xlsx")
-
-    BRAND_RULES = dict(
-        zip(
-            brand_df["keyword"],
-            brand_df["brand"]
-        )
-    )
-
-except:
-    BRAND_RULES = {}
-
 # 备注规则
+# =========================
 REMARK_RULES = {
     "Gua Sheng": "防盗刷",
     "Li Ti Wen": "立体纹",
@@ -33,6 +52,9 @@ REMARK_RULES = {
     "Duo Gong Neng GS": "多功能 挂绳",
 }
 
+# =========================
+# 品牌识别
+# =========================
 def detect_brand(product_name):
     if pd.isna(product_name):
         return "未知品牌"
@@ -43,6 +65,9 @@ def detect_brand(product_name):
 
     return "未知品牌"
 
+# =========================
+# 提取颜色与机型
+# =========================
 def extract_color_model(sku_attr):
     if pd.isna(sku_attr):
         return "", ""
@@ -59,19 +84,25 @@ def extract_color_model(sku_attr):
 
     return color, model
 
+# =========================
+# 最终型号生成
+# =========================
 def build_final_model(brand, model):
     final_model = f"{brand} {model}".strip()
 
+    # 去重 Galaxy Galaxy S24
     words = final_model.split()
 
     cleaned = []
-
     for word in words:
         if not cleaned or cleaned[-1].lower() != word.lower():
             cleaned.append(word)
 
     return " ".join(cleaned)
 
+# =========================
+# 备注识别
+# =========================
 def detect_remark(skc_code):
     if pd.isna(skc_code) or str(skc_code).strip() == "":
         return "防盗刷"
@@ -84,6 +115,9 @@ def detect_remark(skc_code):
 
     return ""
 
+# =========================
+# 异常检测
+# =========================
 def detect_error(row):
     errors = []
 
@@ -98,6 +132,9 @@ def detect_error(row):
 
     return " | ".join(errors)
 
+# =========================
+# Excel导出
+# =========================
 def export_excel(df):
     output = BytesIO()
 
@@ -105,9 +142,11 @@ def export_excel(df):
         df.to_excel(writer, index=False, sheet_name="备货单")
 
     output.seek(0)
-
     return output
 
+# =========================
+# 文件上传
+# =========================
 uploaded_files = st.file_uploader(
     "上传订单Excel",
     type=["xlsx"],
@@ -119,44 +158,60 @@ if uploaded_files:
     all_data = []
 
     for file in uploaded_files:
-        df = pd.read_excel(file)
-        all_data.append(df)
+        try:
+            df = pd.read_excel(file)
+            all_data.append(df)
+        except Exception as e:
+            st.error(f"读取失败: {file.name}")
 
-    raw_df = pd.concat(all_data, ignore_index=True)
+    if all_data:
 
-    result_df = pd.DataFrame()
+        raw_df = pd.concat(all_data, ignore_index=True)
 
-    result_df["订单号"] = raw_df.iloc[:, 0]
+        # 字段映射
+        result_df = pd.DataFrame()
 
-    product_name = raw_df.iloc[:, 1]
+        # 订单号
+        result_df["订单号"] = raw_df.iloc[:, 0]
 
-    sku_attr = raw_df.iloc[:, 5]
+        # 产品名称
+        product_name = raw_df.iloc[:, 1]
 
-    skc_code = raw_df.iloc[:, 3]
+        # SKU属性
+        sku_attr = raw_df.iloc[:, 5]
 
-    result_df["数量"] = raw_df.iloc[:, 7]
+        # SKC货号
+        skc_code = raw_df.iloc[:, 3]
 
-    result_df["店铺"] = raw_df.iloc[:, 8]
+        # 数量
+        result_df["数量"] = raw_df.iloc[:, 7]
 
-    result_df["品牌"] = product_name.apply(detect_brand)
+        # 店铺
+        result_df["店铺"] = raw_df.iloc[:, 8]
 
-    extracted = sku_attr.apply(extract_color_model)
+        # 品牌
+        result_df["品牌"] = product_name.apply(detect_brand)
 
-    result_df["颜色"] = extracted.apply(lambda x: x[0])
+        # 颜色 + 机型
+        extracted = sku_attr.apply(extract_color_model)
 
-    result_df["机型"] = extracted.apply(lambda x: x[1])
+        result_df["颜色"] = extracted.apply(lambda x: x[0])
+        result_df["机型"] = extracted.apply(lambda x: x[1])
 
-    result_df["型号"] = result_df.apply(
-        lambda row: build_final_model(row["品牌"], row["机型"]),
-        axis=1
-    )
+        # 最终型号
+        result_df["型号"] = result_df.apply(
+            lambda row: build_final_model(row["品牌"], row["机型"]),
+            axis=1
+        )
 
-    result_df["备注"] = skc_code.apply(detect_remark)
+        # 备注
+        result_df["备注"] = skc_code.apply(detect_remark)
 
-    result_df["异常"] = result_df.apply(detect_error, axis=1)
+        # 异常
+        result_df["异常"] = result_df.apply(detect_error, axis=1)
 
-    final_df = result_df[
-        [
+        # 最终列
+        final_df = result_df[[
             "型号",
             "颜色",
             "备注",
@@ -164,31 +219,84 @@ if uploaded_files:
             "订单号",
             "店铺",
             "异常"
-        ]
-    ]
+        ]]
 
-    summary_df = final_df.groupby(
-        ["型号", "颜色", "备注"],
-        as_index=False
-    ).agg({
-        "数量": "sum"
-    })
+        # 汇总
+        summary_df = final_df.groupby(
+            ["型号", "颜色", "备注"],
+            as_index=False
+        ).agg({
+            "数量": "sum"
+        })
 
-    final_df = final_df.sort_values(by="型号")
+        # 排序
+        final_df = final_df.sort_values(by="型号")
+        summary_df = summary_df.sort_values(by="型号")
 
-    st.subheader("备货单")
+        # =========================
+        # 备货单模式
+        # =========================
+        if mode == "备货单模式":
 
-    st.dataframe(final_df, use_container_width=True)
+            st.subheader("备货单")
+            st.dataframe(final_df, use_container_width=True)
 
-    st.subheader("SKU汇总")
+            st.subheader("SKU汇总")
+            st.dataframe(summary_df, use_container_width=True)
 
-    st.dataframe(summary_df, use_container_width=True)
+            excel_file = export_excel(final_df)
 
-    excel_file = export_excel(final_df)
+            st.download_button(
+                label="下载备货单Excel",
+                data=excel_file,
+                file_name="备货单.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
-    st.download_button(
-        label="下载备货单Excel",
-        data=excel_file,
-        file_name="备货单.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        # =========================
+        # 拣货单模式
+        # =========================
+        if mode == "拣货单模式":
+
+            pick_df = pd.DataFrame()
+
+            # 原始字段
+            pick_df["批次号"] = raw_df.iloc[:, 9]
+            pick_df["物流信息"] = raw_df.iloc[:, 10]
+            pick_df["发货单号"] = raw_df.iloc[:, 0]
+            pick_df["订单号"] = raw_df.iloc[:, 1]
+            pick_df["产品名称"] = raw_df.iloc[:, 2]
+            pick_df["SKC"] = raw_df.iloc[:, 3]
+            pick_df["SKU ID"] = raw_df.iloc[:, 5]
+
+            # 自动识别字段
+            pick_df["型号"] = result_df["型号"]
+            pick_df["备注"] = result_df["备注"]
+            pick_df["颜色"] = result_df["颜色"]
+
+            # 其它字段
+            pick_df["发货数"] = raw_df.iloc[:, 8]
+            pick_df["收货仓库"] = raw_df.iloc[:, 11]
+            pick_df["店铺"] = raw_df.iloc[:, 12]
+
+            # 排序逻辑
+            pick_df = pick_df.sort_values(
+                by=[
+                    "店铺",
+                    "物流信息",
+                    "发货单号",
+                    "订单号"
+                ],
+                ascending=[True, True, True, True]
+            )
+
+            st.subheader("仓库拣货单")
+            st.dataframe(pick_df, use_container_width=True)
+
+            pick_excel = export_excel(pick_df)
+
+            st.download_button(
+                label="下载拣货单Excel",
+                data=pick_excel,
+                file_name="仓库拣货单.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
