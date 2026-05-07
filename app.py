@@ -183,8 +183,11 @@ if uploaded_files:
         # SKC货号
         skc_code = raw_df["SKC货号"]
 
-        # 数量
-        result_df["数量"] = raw_df["发货数"]
+        # 数量兼容
+        if "数量" in raw_df.columns:
+            result_df["数量"] = raw_df["发货数"]
+        else:
+            result_df["数量"] = raw_df["备货数量"]
 
         # 店铺
         result_df["店铺"] = raw_df["店铺"]
@@ -276,6 +279,7 @@ if uploaded_files:
 
             # 其它字段
             pick_df["发货数"] = raw_df["发货数"]
+            pick_df["备货数量"] = raw_df["备货数量"]
             pick_df["收货仓库"] = raw_df["收货仓库"]
             pick_df["店铺"] = raw_df["店铺"]
 
