@@ -143,6 +143,9 @@ def extract_color_model(text):
 # ==================================================
 # 最终型号生成（终极稳定版）
 # ==================================================
+# ==================================================
+# 最终型号生成（终极去重版）
+# ==================================================
 def build_final_model(brand, model):
 
     brand = str(brand).strip()
@@ -151,9 +154,7 @@ def build_final_model(brand, model):
     if model == "":
         return brand
 
-    # ==================================================
     # 清理空格
-    # ==================================================
     model = re.sub(
         r"\s+",
         " ",
@@ -161,90 +162,39 @@ def build_final_model(brand, model):
     ).strip()
 
     # ==================================================
-    # 机型中的品牌优先
+    # Xiaomi Redmi → Redmi
     # ==================================================
-    detected_brand = None
-
-    sorted_rules = sorted(
-        BRAND_RULES.items(),
-        key=lambda x: len(str(x[0])),
-        reverse=True
+    model = re.sub(
+        r"^xiaomi\s+redmi\s+",
+        "Redmi ",
+        model,
+        flags=re.IGNORECASE
     )
 
-    for keyword, output in sorted_rules:
-
-        keyword = str(keyword).strip()
-        output = str(output).strip()
-
-        if keyword == "":
-            continue
-
-        if keyword.lower() in model.lower():
-
-            detected_brand = output
-            break
-
     # ==================================================
-    # 机型品牌覆盖产品品牌
+    # Samsung Galaxy → Galaxy
     # ==================================================
-    if detected_brand:
-        brand = detected_brand
+    model = re.sub(
+        r"^samsung\s+galaxy\s+",
+        "Galaxy ",
+        model,
+        flags=re.IGNORECASE
+    )
+
+    model = model.strip()
 
     brand_lower = brand.lower()
-
-    # ==================================================
-    # 特殊品牌规则
-    # ==================================================
-    replacement_rules = [
-
-        # Xiaomi Redmi Note 15
-        # -> Redmi Note 15
-        (
-            r"^xiaomi\s+redmi\s+",
-            "Redmi "
-        ),
-
-        # Samsung Galaxy S23
-        # -> Galaxy S23
-        (
-            r"^samsung\s+galaxy\s+",
-            "Galaxy "
-        ),
-
-        # Apple iPhone 15
-        # -> iPhone 15
-        (
-            r"^apple\s+iphone\s+",
-            "iPhone "
-        ),
-    ]
-
-    for pattern, replacement in replacement_rules:
-
-        model = re.sub(
-            pattern,
-            replacement,
-            model,
-            flags=re.IGNORECASE
-        ).strip()
-
     model_lower = model.lower()
 
     # ==================================================
-    # 去除重复品牌
+    # 如果型号本身已经带品牌
+    # 直接返回型号
     # ==================================================
     if model_lower.startswith(brand_lower):
-
-        model = model[len(brand):].strip()
-
-        model = re.sub(
-            r"^[\s\-_\/]+",
-            "",
-            model
-        ).strip()
+        return model
 
     # ==================================================
-    # 最终输出
+    # 否则再拼接品牌
     # ==================================================
     final_model = f"{brand} {model}"
 
