@@ -1,4 +1,4 @@
-# TEMU订单自动备货工具｜双模式稳定终极版 V4
+# TEMU订单自动备货工具｜双模式稳定终极版 V5
 
 import streamlit as st
 import pandas as pd
@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 st.title("TEMU订单自动备货工具")
-st.caption("上传订单Excel → 自动生成备货单 / 拣货单")
+st.caption("上传订单Excel → 自动生成备货单 / 拣货单 / 销量统计")
 
 # ==================================================
 # 模式选择
@@ -32,7 +32,6 @@ try:
 
     brand_df = pd.read_excel("brand_rules.xlsx")
 
-    # 去除列名空格
     brand_df.columns = brand_df.columns.str.strip()
 
     BRAND_RULES = dict(
@@ -73,27 +72,42 @@ def safe_col(df, col_name):
     )
 
 # ==================================================
-# 品牌识别（不区分大小写）
+# 品牌识别（机型优先 + 品牌库输出）
 # ==================================================
-def detect_brand(product_name):
+def detect_brand(product_name, model_text=""):
 
-    if pd.isna(product_name):
+    product_text = str(product_name).lower().strip()
+    model_text = str(model_text).lower().strip()
+
+    if len(BRAND_RULES) == 0:
         return "未知品牌"
 
-    text = str(product_name).lower().strip()
-
-    # 长关键词优先
     sorted_rules = sorted(
         BRAND_RULES.items(),
         key=lambda x: len(str(x[0])),
         reverse=True
     )
 
+    # SKU属性优先
     for keyword, output in sorted_rules:
 
         keyword = str(keyword).lower().strip()
 
-        if keyword in text:
+        if keyword == "":
+            continue
+
+        if keyword in model_text:
+            return str(output).strip()
+
+    # 产品名称次优先
+    for keyword, output in sorted_rules:
+
+        keyword = str(keyword).lower().strip()
+
+        if keyword == "":
+            continue
+
+        if keyword in product_text:
             return str(output).strip()
 
     return "未知品牌"
@@ -108,15 +122,12 @@ def extract_color_model(text):
 
     text = str(text).strip()
 
-    # 统一分隔符
     text = text.replace(" / ", "-")
     text = text.replace("/", "-")
     text = text.replace(" - ", "-")
 
-    # 分割
     parts = re.split(r"-", text, maxsplit=1)
 
-    # 无分隔符
     if len(parts) < 2:
         return "", text
 
@@ -126,7 +137,7 @@ def extract_color_model(text):
     return color, model
 
 # ==================================================
-# 最终型号生成（彻底解决品牌重复）
+# 最终型号生成（彻底去重）
 # ==================================================
 def build_final_model(brand, model):
 
@@ -137,21 +148,11 @@ def build_final_model(brand, model):
         return brand
 
     brand_lower = brand.lower()
-    model_lower = model.lower()
 
-    # ==================================================
-    # 去除重复品牌（核心修复）
-    # Redmi Xiaomi Redmi Note 15
-    # Galaxy Samsung Galaxy S23 Ultra
-    # iPhone iPhone 12 Pro
-    # ==================================================
-
-    # 持续删除前缀品牌
     while True:
 
         changed = False
 
-        # 拆分型号
         words = model.split()
 
         if len(words) == 0:
@@ -159,7 +160,7 @@ def build_final_model(brand, model):
 
         first_word = words[0].lower()
 
-        # 如果型号开头 = 品牌
+        # 完全重复
         if first_word == brand_lower:
 
             words.pop(0)
@@ -168,7 +169,7 @@ def build_final_model(brand, model):
 
             changed = True
 
-        # Samsung Galaxy 特殊处理
+        # Samsung/Galaxy互删
         samsung_alias = [
             "samsung",
             "galaxy"
@@ -176,73 +177,59 @@ def build_final_model(brand, model):
 
         if brand_lower in samsung_alias:
 
-            while True:
+            words = model.split()
 
-                temp_words = model.split()
+            if len(words) > 0:
 
-                if len(temp_words) == 0:
-                    break
+                if words[0].lower() in samsung_alias:
 
-                temp_first = temp_words[0].lower()
+                    words.pop(0)
 
-                if temp_first in samsung_alias:
-
-                    temp_words.pop(0)
-
-                    model = " ".join(temp_words).strip()
+                    model = " ".join(words).strip()
 
                     changed = True
 
-                else:
-                    break
+        # Xiaomi只删Xiaomi
+        if brand_lower == "xiaomi":
 
-        # Xiaomi / Redmi 特殊处理
-        xiaomi_alias = [
-            "xiaomi",
-            "redmi"
-        ]
+            words = model.split()
 
-        if brand_lower in xiaomi_alias:
+            if len(words) > 0:
 
-            while True:
+                if words[0].lower() == "xiaomi":
 
-                temp_words = model.split()
+                    words.pop(0)
 
-                if len(temp_words) == 0:
-                    break
-
-                temp_first = temp_words[0].lower()
-
-                # 只删除重复前缀
-                if temp_first == brand_lower:
-
-                    temp_words.pop(0)
-
-                    model = " ".join(temp_words).strip()
+                    model = " ".join(words).strip()
 
                     changed = True
 
-                else:
-                    break
+        # Redmi只删Redmi
+        if brand_lower == "redmi":
+
+            words = model.split()
+
+            if len(words) > 0:
+
+                if words[0].lower() == "redmi":
+
+                    words.pop(0)
+
+                    model = " ".join(words).strip()
+
+                    changed = True
 
         if not changed:
             break
 
-    # ==================================================
-    # 清理连接符
-    # ==================================================
     model = re.sub(
         r"^[\s\-_\/]+",
         "",
         model
     ).strip()
 
-    # ==================================================
-    # 最终型号
-    # ==================================================
     final_model = f"{brand} {model}"
 
-    # 清理多余空格
     final_model = re.sub(
         r"\s+",
         " ",
@@ -252,11 +239,10 @@ def build_final_model(brand, model):
     return final_model
 
 # ==================================================
-# 备注识别（只读取SKC货号）
+# 备注识别（只识别SKC）
 # ==================================================
 def detect_remark(skc_code):
 
-    # 无内容 = 防盗刷
     if pd.isna(skc_code):
         return "防盗刷"
 
@@ -268,13 +254,11 @@ def detect_remark(skc_code):
     if skc.lower() == "nan":
         return "防盗刷"
 
-    # 优先识别规则
     for keyword, remark in REMARK_RULES.items():
 
         if keyword.lower() in skc.lower():
             return remark
 
-    # 默认
     return "防盗刷"
 
 # ==================================================
@@ -341,7 +325,6 @@ if uploaded_files:
 
             df = pd.read_excel(file)
 
-            # 去除列名空格
             df.columns = df.columns.str.strip()
 
             all_data.append(df)
@@ -350,9 +333,6 @@ if uploaded_files:
 
             st.error(f"读取失败: {file.name} | {e}")
 
-    # ==================================================
-    # 合并数据
-    # ==================================================
     if all_data:
 
         raw_df = pd.concat(
@@ -413,15 +393,8 @@ if uploaded_files:
         # ==================================================
         # 基础字段
         # ==================================================
-        result_df["订单号"] = safe_col(
-            raw_df,
-            "订单号"
-        )
-
-        result_df["店铺"] = safe_col(
-            raw_df,
-            "店铺"
-        )
+        result_df["订单号"] = safe_col(raw_df, "订单号")
+        result_df["店铺"] = safe_col(raw_df, "店铺")
 
         # ==================================================
         # 数量兼容
@@ -442,7 +415,6 @@ if uploaded_files:
 
             result_df["数量"] = 1
 
-        # 转数字
         result_df["数量"] = pd.to_numeric(
             result_df["数量"],
             errors="coerce"
@@ -451,12 +423,16 @@ if uploaded_files:
         # ==================================================
         # 品牌识别
         # ==================================================
-        result_df["品牌"] = product_name.apply(
-            detect_brand
+        result_df["品牌"] = raw_df.apply(
+            lambda row: detect_brand(
+                row.get("产品名称", ""),
+                row.get("SKU属性", "")
+            ),
+            axis=1
         )
 
         # ==================================================
-        # 颜色 + 型号
+        # 提取颜色 + 型号
         # ==================================================
         extracted = sku_attr.apply(
             extract_color_model
@@ -500,6 +476,7 @@ if uploaded_files:
         # 最终备货单
         # ==================================================
         final_df = result_df[[
+            "品牌",
             "型号",
             "颜色",
             "备注",
@@ -519,16 +496,63 @@ if uploaded_files:
             "数量": "sum"
         })
 
-        # ==================================================
-        # 排序
-        # ==================================================
-        final_df = final_df.sort_values(
-            by=["型号", "颜色"]
-        )
-
         summary_df = summary_df.sort_values(
             by=["型号", "颜色"]
         )
+
+        # ==================================================
+        # 销量统计
+        # ==================================================
+        st.divider()
+        st.subheader("销量统计")
+
+        stat_options = st.multiselect(
+            "选择统计维度",
+            ["品牌", "型号", "颜色", "备注"],
+            default=["型号"]
+        )
+
+        stat_df = pd.DataFrame()
+
+        if len(stat_options) > 0:
+
+            sales_df = result_df.copy()
+
+            sales_df = sales_df.fillna("")
+
+            stat_df = sales_df.groupby(
+                stat_options,
+                as_index=False
+            ).agg({
+                "数量": "sum"
+            })
+
+            stat_df = stat_df.sort_values(
+                by="数量",
+                ascending=False
+            )
+
+            st.subheader("销量汇总")
+
+            st.dataframe(
+                stat_df,
+                use_container_width=True
+            )
+
+            st.subheader("销量可视化")
+
+            stat_df["统计标签"] = stat_df[
+                stat_options
+            ].astype(str).agg(
+                " | ".join,
+                axis=1
+            )
+
+            chart_df = stat_df.set_index(
+                "统计标签"
+            )["数量"]
+
+            st.bar_chart(chart_df)
 
         # ==================================================
         # 备货单模式
@@ -549,10 +573,10 @@ if uploaded_files:
                 use_container_width=True
             )
 
-            # 导出
             excel_file = export_excel({
                 "备货单": final_df,
-                "SKU汇总": summary_df
+                "SKU汇总": summary_df,
+                "销量统计": stat_df
             })
 
             st.download_button(
@@ -569,7 +593,6 @@ if uploaded_files:
 
             pick_df = pd.DataFrame()
 
-            # 原始字段
             pick_df["批次号"] = safe_col(raw_df, "批次号")
             pick_df["物流信息"] = safe_col(raw_df, "物流信息")
             pick_df["发货单号"] = safe_col(raw_df, "发货单号")
@@ -578,12 +601,11 @@ if uploaded_files:
             pick_df["SKC"] = safe_col(raw_df, "SKC")
             pick_df["SKU ID"] = safe_col(raw_df, "SKU ID")
 
-            # 自动识别字段
+            pick_df["品牌"] = result_df["品牌"]
             pick_df["型号"] = result_df["型号"]
             pick_df["备注"] = result_df["备注"]
             pick_df["颜色"] = result_df["颜色"]
 
-            # 发货数兼容
             if "发货数" in raw_df.columns:
 
                 pick_df["发货数"] = raw_df["发货数"]
@@ -596,19 +618,14 @@ if uploaded_files:
 
                 pick_df["发货数"] = 1
 
-            # 转整数
             pick_df["发货数"] = pd.to_numeric(
                 pick_df["发货数"],
                 errors="coerce"
             ).fillna(1).astype(int)
 
-            # 其它字段
             pick_df["收货仓库"] = safe_col(raw_df, "收货仓库")
             pick_df["店铺"] = safe_col(raw_df, "店铺")
 
-            # ==================================================
-            # 排序
-            # ==================================================
             sort_cols = []
 
             for col in [
@@ -628,9 +645,6 @@ if uploaded_files:
                     ascending=True
                 )
 
-            # ==================================================
-            # 展示
-            # ==================================================
             st.subheader("仓库拣货单")
 
             st.dataframe(
@@ -638,11 +652,9 @@ if uploaded_files:
                 use_container_width=True
             )
 
-            # ==================================================
-            # 下载
-            # ==================================================
             pick_excel = export_excel({
-                "仓库拣货单": pick_df
+                "仓库拣货单": pick_df,
+                "销量统计": stat_df
             })
 
             st.download_button(
