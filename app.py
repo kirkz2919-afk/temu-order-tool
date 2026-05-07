@@ -231,6 +231,15 @@ def build_final_model(brand, model):
     # ==================================================
     # Samsung Galaxy → Galaxy
     # ==================================================
+    # Motorola → MOTO
+    # ==================================================
+    model = re.sub(
+        r"^motorola\s+",
+        "MOTO ",
+        model,
+        flags=re.IGNORECASE
+    )
+    # ==================================================
     model = re.sub(
         r"^samsung\s+galaxy\s+",
         "Galaxy ",
