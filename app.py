@@ -172,13 +172,16 @@ def build_final_model(brand, model):
     if model == "":
         return brand
 
+    # 清理空格
     model = re.sub(
         r"\s+",
         " ",
         model
     ).strip()
 
+    # ==================================================
     # Xiaomi Redmi → Redmi
+    # ==================================================
     model = re.sub(
         r"^xiaomi\s+redmi\s+",
         "Redmi ",
@@ -186,7 +189,9 @@ def build_final_model(brand, model):
         flags=re.IGNORECASE
     )
 
+    # ==================================================
     # Samsung Galaxy → Galaxy
+    # ==================================================
     model = re.sub(
         r"^samsung\s+galaxy\s+",
         "Galaxy ",
@@ -199,22 +204,23 @@ def build_final_model(brand, model):
     brand_lower = brand.lower()
     model_lower = model.lower()
 
-# ==================================================
-# 型号已经自带品牌
-# 支持：
-# iPhone12
-# iPhone 12
-# iPhone-12
-# GalaxyS23
-# RedmiNote15
-# ==================================================
+    # ==================================================
+    # 型号已经自带品牌
+    # 支持：
+    # iPhone12
+    # iPhone 12
+    # iPhone-12
+    # GalaxyS23
+    # RedmiNote15
+    # ==================================================
+    pattern = rf"^{re.escape(brand_lower)}[\s\-_]*"
 
-pattern = rf"^{re.escape(brand_lower)}[\s\-_]*"
+    if re.match(pattern, model_lower):
+        return model
 
-if re.match(pattern, model_lower):
-    return model
-
-    # 否则拼接
+    # ==================================================
+    # 否则拼接品牌
+    # ==================================================
     final_model = f"{brand} {model}"
 
     final_model = re.sub(
