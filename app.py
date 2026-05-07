@@ -1,4 +1,4 @@
-# TEMU订单自动备货工具｜双模式稳定版 V3
+# TEMU订单自动备货工具｜双模式稳定版 V4
 
 import streamlit as st
 import pandas as pd
@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 st.title("TEMU订单自动备货工具")
-st.caption("上传订单Excel → 自动生成备货单 / 拣货单")
+st.caption("上传订单Excel → 自动生成备货单 / 拣货单 / 销量统计")
 
 # ==================================================
 # 模式选择
@@ -57,30 +57,6 @@ REMARK_RULES = {
 }
 
 # ==================================================
-# 品牌标准化
-# ==================================================
-NORMALIZE_RULES = {
-    "samsung": "Galaxy",
-    "galaxy": "Galaxy",
-
-    "moto": "Motorola",
-    "motorola": "Motorola",
-
-    "redmi": "Xiaomi",
-    "mi": "Xiaomi",
-    "xiaomi": "Xiaomi",
-
-    "honor": "Honor",
-    "huawei": "Huawei",
-    "vivo": "Vivo",
-    "oppo": "OPPO",
-    "realme": "Realme",
-
-    "tecno": "Tecno",
-    "infinix": "Infinix",
-}
-
-# ==================================================
 # 安全取字段
 # ==================================================
 def safe_col(df, col_name):
@@ -89,9 +65,9 @@ def safe_col(df, col_name):
         return df[col_name]
 
     return pd.Series(
-    [""] * len(df),
-    index=df.index
-)
+        [""] * len(df),
+        index=df.index
+    )
 
 # ==================================================
 # 品牌识别
@@ -130,12 +106,18 @@ def extract_color_model(text):
     text = str(text).strip()
 
     # 统一分隔符
-    text = text.replace(" / ", "-")
-    text = text.replace("/", "-")
-    text = text.replace(" - ", "-")
+    text = re.sub(
+        r"\s*[/\-]\s*",
+        "-",
+        text
+    )
 
     # 分割
-    parts = re.split(r"-", text, maxsplit=1)
+    parts = re.split(
+        r"-",
+        text,
+        maxsplit=1
+    )
 
     # 无分隔符
     if len(parts) < 2:
@@ -154,48 +136,48 @@ def build_final_model(brand, model):
     brand = str(brand).strip()
     model = str(model).strip()
 
-    # 品牌标准化
-    normalized_brand = NORMALIZE_RULES.get(
-        brand.lower(),
-        brand
-    )
+    if brand == "":
+        return model
 
-    # 型号前缀清洗
+    brand_lower = brand.lower()
     model_lower = model.lower()
 
-    all_aliases = set(
-        list(NORMALIZE_RULES.keys()) +
-        [v.lower() for v in NORMALIZE_RULES.values()]
-    )
+    # 去除型号前面的重复品牌
+    pattern = rf"^{re.escape(brand_lower)}[\s\-_\/]+"
 
-    for alias in all_aliases:
+    if re.match(pattern, model_lower):
 
-        if model_lower.startswith(alias + " "):
-
-            model = model[len(alias):].strip()
-
-            break
+        model = re.sub(
+            pattern,
+            "",
+            model,
+            flags=re.IGNORECASE
+        ).strip()
 
     # 最终型号
-    final_model = f"{normalized_brand} {model}"
+    final_model = f"{brand} {model}"
 
     # 清理多余空格
-    final_model = re.sub(r"\s+", " ", final_model)
+    final_model = re.sub(
+        r"\s+",
+        " ",
+        final_model
+    )
 
     return final_model.strip()
 
-# =========================
+# ==================================================
 # 备注识别
-# =========================
+# ==================================================
 def detect_remark(skc_code):
 
-    # 空值统一默认防盗刷
+    # 空值默认防盗刷
     if pd.isna(skc_code):
         return "防盗刷"
 
     skc = str(skc_code).strip()
 
-    # 空字符串 / nan字符串
+    # 空字符串
     if skc == "" or skc.lower() == "nan":
         return "防盗刷"
 
@@ -317,7 +299,8 @@ if uploaded_files:
         else:
 
             sku_attr = pd.Series(
-                [""] * len(raw_df)
+                [""] * len(raw_df),
+                index=raw_df.index
             )
 
         # ==================================================
@@ -334,7 +317,8 @@ if uploaded_files:
         else:
 
             skc_code = pd.Series(
-                [""] * len(raw_df)
+                [""] * len(raw_df),
+                index=raw_df.index
             )
 
         # ==================================================
@@ -368,6 +352,12 @@ if uploaded_files:
         else:
 
             result_df["数量"] = 1
+
+        # 转整数
+        result_df["数量"] = pd.to_numeric(
+            result_df["数量"],
+            errors="coerce"
+        ).fillna(1).astype(int)
 
         # ==================================================
         # 品牌识别
@@ -433,7 +423,7 @@ if uploaded_files:
         # ==================================================
         # SKU汇总
         # ==================================================
-        summary_df = final_df.groupby(
+        summary_df = final_df.fillna("").groupby(
             ["型号", "颜色", "备注"],
             as_index=False
         ).agg({
@@ -449,6 +439,69 @@ if uploaded_files:
 
         summary_df = summary_df.sort_values(
             by=["型号", "颜色"]
+        )
+
+        # ==================================================
+        # 销量统计
+        # ==================================================
+        st.subheader("销量统计")
+
+        stat_mode = st.selectbox(
+            "统计维度",
+            [
+                "品牌",
+                "型号",
+                "型号+颜色",
+                "型号+颜色+备注"
+            ]
+        )
+
+        if stat_mode == "品牌":
+
+            stat_cols = ["品牌"]
+
+        elif stat_mode == "型号":
+
+            stat_cols = ["型号"]
+
+        elif stat_mode == "型号+颜色":
+
+            stat_cols = ["型号", "颜色"]
+
+        else:
+
+            stat_cols = ["型号", "颜色", "备注"]
+
+        sales_df = result_df.fillna("").groupby(
+            stat_cols,
+            as_index=False
+        ).agg({
+            "数量": "sum"
+        })
+
+        sales_df = sales_df.sort_values(
+            by="数量",
+            ascending=False
+        )
+
+        st.dataframe(
+            sales_df,
+            use_container_width=True
+        )
+
+        # ==================================================
+        # 下载销量统计
+        # ==================================================
+        sales_excel = export_excel(
+            sales_df,
+            "销量统计"
+        )
+
+        st.download_button(
+            label="下载销量统计Excel",
+            data=sales_excel,
+            file_name="销量统计.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
         # ==================================================
@@ -515,6 +568,12 @@ if uploaded_files:
             else:
 
                 pick_df["发货数"] = 1
+
+            # 转整数
+            pick_df["发货数"] = pd.to_numeric(
+                pick_df["发货数"],
+                errors="coerce"
+            ).fillna(1).astype(int)
 
             # 其它字段
             pick_df["收货仓库"] = safe_col(raw_df, "收货仓库")
