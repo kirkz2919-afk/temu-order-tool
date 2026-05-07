@@ -88,7 +88,10 @@ def safe_col(df, col_name):
     if col_name in df.columns:
         return df[col_name]
 
-    return pd.Series([""] * len(df))
+    return pd.Series(
+    [""] * len(df),
+    index=df.index
+)
 
 # ==================================================
 # 品牌识别
@@ -181,22 +184,29 @@ def build_final_model(brand, model):
 
     return final_model.strip()
 
-# ==================================================
+# =========================
 # 备注识别
-# ==================================================
+# =========================
 def detect_remark(skc_code):
 
+    # 空值统一默认防盗刷
     if pd.isna(skc_code):
-        return ""
+        return "防盗刷"
 
-    skc = str(skc_code)
+    skc = str(skc_code).strip()
 
+    # 空字符串 / nan字符串
+    if skc == "" or skc.lower() == "nan":
+        return "防盗刷"
+
+    # 规则识别
     for keyword, remark in REMARK_RULES.items():
 
         if keyword.lower() in skc.lower():
             return remark
 
-    return ""
+    # 默认防盗刷
+    return "防盗刷"
 
 # ==================================================
 # 异常检测
