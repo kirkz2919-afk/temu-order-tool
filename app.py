@@ -72,7 +72,7 @@ def safe_col(df, col_name):
     )
 
 # ==================================================
-# 品牌识别（机型优先）
+# 品牌识别（Redmi / Galaxy 优先）
 # ==================================================
 def detect_brand(product_name, model_text=""):
 
@@ -82,36 +82,57 @@ def detect_brand(product_name, model_text=""):
     if len(BRAND_RULES) == 0:
         return "未知品牌"
 
+    # ==================================================
+    # Redmi / Galaxy 子品牌优先
+    # ==================================================
+    PRIORITY_BRANDS = [
+        "redmi",
+        "galaxy"
+    ]
+
+    # SKU属性优先
+    for priority_brand in PRIORITY_BRANDS:
+
+        if priority_brand in model_text:
+
+            for keyword, output in BRAND_RULES.items():
+
+                if str(keyword).lower().strip() == priority_brand:
+                    return str(output).strip()
+
+    # 产品名称其次
+    for priority_brand in PRIORITY_BRANDS:
+
+        if priority_brand in product_text:
+
+            for keyword, output in BRAND_RULES.items():
+
+                if str(keyword).lower().strip() == priority_brand:
+                    return str(output).strip()
+
+    # ==================================================
+    # 普通品牌规则
+    # ==================================================
     sorted_rules = sorted(
         BRAND_RULES.items(),
         key=lambda x: len(str(x[0])),
         reverse=True
     )
 
-    # ==================================================
-    # 机型优先识别品牌
-    # ==================================================
+    # SKU属性优先
     for keyword, output in sorted_rules:
 
         keyword = str(keyword).lower().strip()
 
-        if keyword == "":
-            continue
-
-        if keyword in model_text:
+        if keyword and keyword in model_text:
             return str(output).strip()
 
-    # ==================================================
-    # 产品名称兜底识别
-    # ==================================================
+    # 产品名称其次
     for keyword, output in sorted_rules:
 
         keyword = str(keyword).lower().strip()
 
-        if keyword == "":
-            continue
-
-        if keyword in product_text:
+        if keyword and keyword in product_text:
             return str(output).strip()
 
     return "未知品牌"
