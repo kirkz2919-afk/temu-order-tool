@@ -147,86 +147,64 @@ def build_final_model(brand, model):
     if model == "":
         return brand
 
-    brand_lower = brand.lower()
-
-    while True:
-
-        changed = False
-
-        words = model.split()
-
-        if len(words) == 0:
-            break
-
-        first_word = words[0].lower()
-
-        # 完全重复
-        if first_word == brand_lower:
-
-            words.pop(0)
-
-            model = " ".join(words).strip()
-
-            changed = True
-
-        # Samsung/Galaxy互删
-        samsung_alias = [
-            "samsung",
-            "galaxy"
-        ]
-
-        if brand_lower in samsung_alias:
-
-            words = model.split()
-
-            if len(words) > 0:
-
-                if words[0].lower() in samsung_alias:
-
-                    words.pop(0)
-
-                    model = " ".join(words).strip()
-
-                    changed = True
-
-        # Xiaomi只删Xiaomi
-        if brand_lower == "xiaomi":
-
-            words = model.split()
-
-            if len(words) > 0:
-
-                if words[0].lower() == "xiaomi":
-
-                    words.pop(0)
-
-                    model = " ".join(words).strip()
-
-                    changed = True
-
-        # Redmi只删Redmi
-        if brand_lower == "redmi":
-
-            words = model.split()
-
-            if len(words) > 0:
-
-                if words[0].lower() == "redmi":
-
-                    words.pop(0)
-
-                    model = " ".join(words).strip()
-
-                    changed = True
-
-        if not changed:
-            break
-
     model = re.sub(
-        r"^[\s\-_\/]+",
-        "",
+        r"\s+",
+        " ",
         model
     ).strip()
+
+    # ==================================================
+    # Redmi 特殊规则
+    # Xiaomi Redmi Note 15
+    # => Redmi Note 15
+    # ==================================================
+
+    if brand.lower() == "redmi":
+
+        model = re.sub(
+            r"^xiaomi\s+redmi\s+",
+            "Redmi ",
+            model,
+            flags=re.IGNORECASE
+        ).strip()
+
+    # ==================================================
+    # Galaxy 特殊规则
+    # Samsung Galaxy S23
+    # => Galaxy S23
+    # ==================================================
+
+    if brand.lower() == "galaxy":
+
+        model = re.sub(
+            r"^samsung\s+galaxy\s+",
+            "Galaxy ",
+            model,
+            flags=re.IGNORECASE
+        ).strip()
+
+    # ==================================================
+    # 去除重复品牌
+    # Redmi Redmi Note 15
+    # Galaxy Galaxy S23
+    # ==================================================
+
+    brand_lower = brand.lower()
+    model_lower = model.lower()
+
+    if model_lower.startswith(brand_lower):
+
+        model = model[len(brand):].strip()
+
+        model = re.sub(
+            r"^[\s\-_\/]+",
+            "",
+            model
+        ).strip()
+
+    # ==================================================
+    # 最终输出
+    # ==================================================
 
     final_model = f"{brand} {model}"
 
