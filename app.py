@@ -94,7 +94,14 @@ def detect_brand(product_name, model_text=""):
         if keyword_clean == "":
             continue
 
-        if keyword_clean in model_text:
+        # ==================================================
+        # 完整单词匹配
+        # 防止：
+        # itel -> OUKITEL
+        # ==================================================
+        pattern = rf"(?<![a-z0-9]){re.escape(keyword_clean)}(?![a-z0-9])"
+
+        if re.search(pattern, model_text):
 
             brand_matches.append(
                 (
@@ -127,12 +134,15 @@ def detect_brand(product_name, model_text=""):
 
     for keyword, output in sorted_rules:
 
-        keyword = str(keyword).lower().strip()
+        keyword_clean = str(keyword).lower().strip()
 
-        if keyword == "":
+        if keyword_clean == "":
             continue
 
-        if keyword in product_text:
+        pattern = rf"(?<![a-z0-9]){re.escape(keyword_clean)}(?![a-z0-9])"
+
+        if re.search(pattern, product_text):
+
             return str(output).strip()
 
     return "未知品牌"
@@ -172,7 +182,36 @@ def build_final_model(brand, model):
     if model == "":
         return brand
 
+    # ==================================================
+    # 品牌统一格式
+    # ==================================================
+    brand_map = {
+        "iphone": "iPhone",
+        "ipad": "iPad",
+        "redmi": "Redmi",
+        "xiaomi": "Xiaomi",
+        "galaxy": "Galaxy",
+        "samsung": "Samsung",
+        "huawei": "Huawei",
+        "honor": "Honor",
+        "oppo": "OPPO",
+        "vivo": "Vivo",
+        "realme": "Realme",
+        "oneplus": "OnePlus",
+        "google": "Google",
+        "pixel": "Pixel",
+        "itel": "Itel",
+        "oukitel": "OUKITEL",
+    }
+
+    brand_lower = brand.lower()
+
+    if brand_lower in brand_map:
+        brand = brand_map[brand_lower]
+
+    # ==================================================
     # 清理空格
+    # ==================================================
     model = re.sub(
         r"\s+",
         " ",
@@ -201,21 +240,23 @@ def build_final_model(brand, model):
 
     model = model.strip()
 
-    brand_lower = brand.lower()
     model_lower = model.lower()
 
     # ==================================================
     # 型号已经自带品牌
-    # 支持：
-    # iPhone12
-    # iPhone 12
-    # iPhone-12
-    # GalaxyS23
-    # RedmiNote15
     # ==================================================
-    pattern = rf"^{re.escape(brand_lower)}[\s\-_]*"
+    pattern = rf"^{re.escape(brand.lower())}[\s\-_]*"
 
     if re.match(pattern, model_lower):
+
+        # 统一型号品牌大小写
+        model = re.sub(
+            pattern,
+            brand + " ",
+            model,
+            flags=re.IGNORECASE
+        ).strip()
+
         return model
 
     # ==================================================
