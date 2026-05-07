@@ -72,7 +72,7 @@ def safe_col(df, col_name):
     )
 
 # ==================================================
-# 品牌识别（Redmi / Galaxy 优先）
+# 品牌识别（机型最后品牌优先版）
 # ==================================================
 def detect_brand(product_name, model_text=""):
 
@@ -83,35 +83,41 @@ def detect_brand(product_name, model_text=""):
         return "未知品牌"
 
     # ==================================================
-    # Redmi / Galaxy 子品牌优先
+    # 所有品牌关键词
     # ==================================================
-    PRIORITY_BRANDS = [
-        "redmi",
-        "galaxy"
-    ]
+    brand_matches = []
 
-    # SKU属性优先
-    for priority_brand in PRIORITY_BRANDS:
+    for keyword, output in BRAND_RULES.items():
 
-        if priority_brand in model_text:
+        keyword_clean = str(keyword).lower().strip()
 
-            for keyword, output in BRAND_RULES.items():
+        if keyword_clean == "":
+            continue
 
-                if str(keyword).lower().strip() == priority_brand:
-                    return str(output).strip()
+        if keyword_clean in model_text:
 
-    # 产品名称其次
-    for priority_brand in PRIORITY_BRANDS:
-
-        if priority_brand in product_text:
-
-            for keyword, output in BRAND_RULES.items():
-
-                if str(keyword).lower().strip() == priority_brand:
-                    return str(output).strip()
+            brand_matches.append(
+                (
+                    model_text.rfind(keyword_clean),
+                    str(output).strip()
+                )
+            )
 
     # ==================================================
-    # 普通品牌规则
+    # 机型里识别到品牌
+    # 取最后出现的品牌
+    # ==================================================
+    if len(brand_matches) > 0:
+
+        brand_matches.sort(
+            key=lambda x: x[0]
+        )
+
+        return brand_matches[-1][1]
+
+    # ==================================================
+    # 机型没识别到
+    # 才识别产品名称
     # ==================================================
     sorted_rules = sorted(
         BRAND_RULES.items(),
@@ -119,20 +125,14 @@ def detect_brand(product_name, model_text=""):
         reverse=True
     )
 
-    # SKU属性优先
     for keyword, output in sorted_rules:
 
         keyword = str(keyword).lower().strip()
 
-        if keyword and keyword in model_text:
-            return str(output).strip()
+        if keyword == "":
+            continue
 
-    # 产品名称其次
-    for keyword, output in sorted_rules:
-
-        keyword = str(keyword).lower().strip()
-
-        if keyword and keyword in product_text:
+        if keyword in product_text:
             return str(output).strip()
 
     return "未知品牌"
@@ -162,9 +162,6 @@ def extract_color_model(text):
     return color, model
 
 # ==================================================
-# 最终型号生成（终极稳定版）
-# ==================================================
-# ==================================================
 # 最终型号生成（终极去重版）
 # ==================================================
 def build_final_model(brand, model):
@@ -175,16 +172,13 @@ def build_final_model(brand, model):
     if model == "":
         return brand
 
-    # 清理空格
     model = re.sub(
         r"\s+",
         " ",
         model
     ).strip()
 
-    # ==================================================
     # Xiaomi Redmi → Redmi
-    # ==================================================
     model = re.sub(
         r"^xiaomi\s+redmi\s+",
         "Redmi ",
@@ -192,9 +186,7 @@ def build_final_model(brand, model):
         flags=re.IGNORECASE
     )
 
-    # ==================================================
     # Samsung Galaxy → Galaxy
-    # ==================================================
     model = re.sub(
         r"^samsung\s+galaxy\s+",
         "Galaxy ",
@@ -207,16 +199,22 @@ def build_final_model(brand, model):
     brand_lower = brand.lower()
     model_lower = model.lower()
 
-    # ==================================================
-    # 如果型号本身已经带品牌
-    # 直接返回型号
-    # ==================================================
-    if model_lower.startswith(brand_lower):
-        return model
+# ==================================================
+# 型号已经自带品牌
+# 支持：
+# iPhone12
+# iPhone 12
+# iPhone-12
+# GalaxyS23
+# RedmiNote15
+# ==================================================
 
-    # ==================================================
-    # 否则再拼接品牌
-    # ==================================================
+pattern = rf"^{re.escape(brand_lower)}[\s\-_]*"
+
+if re.match(pattern, model_lower):
+    return model
+
+    # 否则拼接
     final_model = f"{brand} {model}"
 
     final_model = re.sub(
