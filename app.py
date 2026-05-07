@@ -174,8 +174,11 @@ if uploaded_files:
         # 产品名称
         product_name = raw_df["产品名称"]
 
-        # SKU属性
-        sku_attr = raw_df["SKU属性"]
+        # SKU属性兼容
+        if "SKU属性" in raw_df.columns:
+            sku_attr = raw_df["SKU属性"]
+        else:
+            sku_attr = raw_df["产品名称"]
 
         # SKC货号
         skc_code = raw_df["SKC货号"]
