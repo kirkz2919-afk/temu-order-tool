@@ -54,6 +54,7 @@ REMARK_RULES = {
     "Gua Sheng": "防盗刷",
     "Li Ti Wen": "立体纹",
     "Li Zhi Wen": "荔枝纹",
+    "Tan Xian Wei": "碳纤纹",
     "Duo Gong Neng GS+JD": "多功能 挂绳+肩带",
     "Duo Gong Neng GS": "多功能 挂绳",
 }
